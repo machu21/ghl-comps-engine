@@ -1,7 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from 'next/server';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 export const maxDuration = 60;
 
@@ -17,12 +17,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing contactId or address" }, { status: 400 });
     }
 
-    // 2. Call Claude API
+    // 2. Call Gemini API with live Google Search
     const prompt = `
-      You are a real estate wholesale analyst. 
-      Perform a deep real estate analysis for: ${address}.
-      Based on your knowledge of the Houston, TX real estate market, estimate 3 recently 
-      SOLD comparable properties within 1 mile of the subject property.
+      Perform a deep real estate search for: ${address}.
+      Using Google Search, find 3 recently SOLD comparable properties within 1 mile.
       
       Structure the response EXACTLY in this format:
       
@@ -57,18 +55,15 @@ export async function POST(req: Request) {
       Analysis: [Add a 3-sentence summary on why this is or isn't a good wholesale deal.]
     `;
 
-    const message = await client.messages.create({
-      model: "claude-haiku-4-5-20251001", // fastest + cheapest Claude model
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+      },
     });
 
-    const aiNote = message.content[0].type === "text" ? message.content[0].text : "";
+    const aiNote = response.text;
 
     // 3. Post to GoHighLevel with Opportunity Association
     const ghlRes = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/notes`, {
