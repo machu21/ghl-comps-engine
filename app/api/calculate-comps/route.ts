@@ -17,9 +17,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing contactId or address" }, { status: 400 });
     }
 
-    // 2. Initialize Gemini 3.1 logic via 1.5-pro string
+    // 2. Initialize Gemini 3.1 logic via 3.1-pro string
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-pro", 
+      model: "gemini-3.1-pro", 
       tools: [{ googleSearchRetrieval: {} }] 
     });
 
