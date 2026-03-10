@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     // 1. Parse the Body ONCE
     const body = await req.json();
     console.log("RAW WEBHOOK DATA:", JSON.stringify(body));
-    const { contactId, address, opportunityId } = body;
+    const { contactId, address, opportunityId } = body.customData || {};
 
     // Basic Validation
     if (!contactId || !address) {
