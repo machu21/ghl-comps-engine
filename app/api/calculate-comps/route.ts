@@ -1,7 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
+import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from 'next/server';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
 export const maxDuration = 60;
 
@@ -17,10 +17,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing contactId or address" }, { status: 400 });
     }
 
-    // 2. Initialize Gemini with new SDK + googleSearch tool
+    // 2. Call Claude API
     const prompt = `
-      Perform a deep real estate search for: ${address}.
-      Using Google Search, find 3 recently SOLD comparable properties within 1 mile.
+      You are a real estate wholesale analyst. 
+      Perform a deep real estate analysis for: ${address}.
+      Based on your knowledge of the Houston, TX real estate market, estimate 3 recently 
+      SOLD comparable properties within 1 mile of the subject property.
       
       Structure the response EXACTLY in this format:
       
@@ -55,15 +57,18 @@ export async function POST(req: Request) {
       Analysis: [Add a 3-sentence summary on why this is or isn't a good wholesale deal.]
     `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
+    const message = await client.messages.create({
+      model: "claude-haiku-4-5-20251001", // fastest + cheapest Claude model
+      max_tokens: 1024,
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
     });
 
-    const aiNote = response.text;
+    const aiNote = message.content[0].type === "text" ? message.content[0].text : "";
 
     // 3. Post to GoHighLevel with Opportunity Association
     const ghlRes = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/notes`, {
@@ -75,7 +80,6 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         body: aiNote,
-        // Linking the note to the specific Opportunity Card
         associations: opportunityId ? [
           {
             objectId: opportunityId,
