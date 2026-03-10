@@ -19,40 +19,25 @@ export async function POST(req: Request) {
 
     // 2. Call Gemini API with live Google Search
     const prompt = `
-      Perform a deep real estate search for: ${address}.
-      Using Google Search, find 3 recently SOLD comparable properties within 1 mile.
-      
-      Structure the response EXACTLY in this format:
-      
-      Property Address: ${address}
-      
-      AvgPPS: [Calculate average Price Per Sq Ft of the 3 comps]
-      ARV: [Estimated After Repair Value]
-      Apply % for ARV: 70%
-      Repairs: [Estimate based on property age/condition, default to $50k if unknown]
-      MAO: [Calculate (ARV * 0.7) - Repairs]
-      Offer: [Suggested starting offer]
-      
-      Profit 5K - [MAO + 5000]
-      Profit 10K - [MAO + 10000]
-      Profit 15K - [MAO + 15000]
-      
-      Property 1 : [Full Address]
-      - Distance from subject property: [miles]
-      - SOLD: [Date and Price]
-      - Price / Sq Ft: [Calculate price/sqft]
-      
-      Property 2 : [Full Address]
-      - Distance from subject property: [miles]
-      - SOLD: [Date and Price]
-      - Price / Sq Ft: [Calculate price/sqft]
-      
-      Property 3 : [Full Address]
-      - Distance from subject property: [miles]
-      - SOLD: [Date and Price]
-      - Price / Sq Ft: [Calculate price/sqft]
+      You are a real estate wholesale analyst.
+      Search for 3 recently SOLD comps within 1 mile of: ${address}
 
-      Analysis: [Add a 3-sentence summary on why this is or isn't a good wholesale deal.]
+      Return ONLY this:
+
+      Property Address: ${address}
+      AvgPPS: $X/sqft
+      ARV: $X
+      Repairs: $10,000 (medium)
+      MAO (ARV x 70% - $10,000 repairs): $X
+      Offer: $X
+
+      Profit 5K: $X | Profit 10K: $X | Profit 15K: $X
+
+      Comp 1: [Address] | Sold: $X | $/sqft: $X | [X] miles away
+      Comp 2: [Address] | Sold: $X | $/sqft: $X | [X] miles away
+      Comp 3: [Address] | Sold: $X | $/sqft: $X | [X] miles away
+
+      Analysis: [2 sentences max - good deal or not?]
     `;
 
     const response = await ai.models.generateContent({
