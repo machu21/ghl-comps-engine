@@ -1,0 +1,5 @@
+PS C:\Users\ACER.DESKTOP-FLMICGU\ghl-comps-engine> git init
+PS C:\Users\ACER.DESKTOP-FLMICGU\ghl-comps-engine> git add .
+PS C:\Users\ACER.DESKTOP-FLMICGU\ghl-comps-engine> git branch -M main
+PS C:\Users\ACER.DESKTOP-FLMICGU\ghl-comps-engine> git remote add origin https://github.com/machu21/ghl-comps-engine.git
+PS C:\Users\ACER.DESKTOP-FLMICGU\ghl-comps-engine> git push -u origin main

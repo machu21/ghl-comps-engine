@@ -3,13 +3,22 @@ import { NextResponse } from 'next/server';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
+export const maxDuration = 60; 
+
 export async function POST(req: Request) {
   try {
-    const { contactId, address } = await req.json();
+    // 1. Parse the Body ONCE
+    const body = await req.json();
+    const { contactId, address, opportunityId } = body;
 
-    // Initialize Gemini 3.1 Pro with Search Grounding
+    // Basic Validation
+    if (!contactId || !address) {
+      return NextResponse.json({ error: "Missing contactId or address" }, { status: 400 });
+    }
+
+    // 2. Initialize Gemini 3.1 logic via 1.5-pro string
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-3.1-pro-preview", // The latest flagship
+      model: "gemini-1.5-pro", 
       tools: [{ googleSearchRetrieval: {} }] 
     });
 
@@ -24,7 +33,7 @@ export async function POST(req: Request) {
       AvgPPS: [Calculate average Price Per Sq Ft of the 3 comps]
       ARV: [Estimated After Repair Value]
       Apply % for ARV: 70%
-      Repairs: [Estimate based on property age/condition found in records, default to $50k if unknown]
+      Repairs: [Estimate based on property age/condition, default to $50k if unknown]
       MAO: [Calculate (ARV * 0.7) - Repairs]
       Offer: [Suggested starting offer]
       
@@ -47,13 +56,13 @@ export async function POST(req: Request) {
       - SOLD: [Date and Price]
       - Price / Sq Ft: [Calculate price/sqft]
 
-      Analysis: [Add a 3-sentence summary on why this is or isn't a good wholesale deal based on the data found.]
+      Analysis: [Add a 3-sentence summary on why this is or isn't a good wholesale deal.]
     `;
 
     const result = await model.generateContent(prompt);
-    const formattedNote = result.response.text();
+    const aiNote = result.response.text();
 
-    // Post to GoHighLevel
+    // 3. Post to GoHighLevel with Opportunity Association
     const ghlRes = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/notes`, {
       method: 'POST',
       headers: {
@@ -61,13 +70,27 @@ export async function POST(req: Request) {
         'Version': '2021-07-28',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ body: formattedNote }),
+      body: JSON.stringify({ 
+        body: aiNote,
+        // Linking the note to the specific Opportunity Card
+        associations: opportunityId ? [
+          {
+            objectId: opportunityId,
+            objectType: "opportunity"
+          }
+        ] : []
+      }),
     });
 
-    if (!ghlRes.ok) throw new Error('GHL API Update Failed');
+    if (!ghlRes.ok) {
+      const errorData = await ghlRes.text();
+      console.error("GHL Error Details:", errorData);
+      throw new Error(`GHL API Update Failed: ${ghlRes.status}`);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    console.error("Route Error:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
