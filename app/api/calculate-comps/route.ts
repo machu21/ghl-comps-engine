@@ -1,9 +1,9 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from 'next/server';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
-export const maxDuration = 60; 
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
@@ -17,12 +17,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing contactId or address" }, { status: 400 });
     }
 
-    // 2. Initialize Gemini 3.1 logic via 3.1-pro string
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-3.1-pro", 
-      tools: [{ googleSearchRetrieval: {} }] 
-    });
-
+    // 2. Initialize Gemini with new SDK + googleSearch tool
     const prompt = `
       Perform a deep real estate search for: ${address}.
       Using Google Search, find 3 recently SOLD comparable properties within 1 mile.
@@ -60,8 +55,15 @@ export async function POST(req: Request) {
       Analysis: [Add a 3-sentence summary on why this is or isn't a good wholesale deal.]
     `;
 
-    const result = await model.generateContent(prompt);
-    const aiNote = result.response.text();
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+      },
+    });
+
+    const aiNote = response.text;
 
     // 3. Post to GoHighLevel with Opportunity Association
     const ghlRes = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/notes`, {
@@ -71,7 +73,7 @@ export async function POST(req: Request) {
         'Version': '2021-07-28',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         body: aiNote,
         // Linking the note to the specific Opportunity Card
         associations: opportunityId ? [
