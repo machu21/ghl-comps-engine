@@ -50,7 +50,18 @@ export async function POST(req: Request) {
 
     const aiNote = response.text;
 
-    // 3. Post to GoHighLevel with Opportunity Association
+    // 3. Build GHL payload — only include associations if opportunityId exists
+    const ghlPayload: any = { body: aiNote };
+    if (opportunityId && opportunityId !== "") {
+      ghlPayload.associations = [
+        {
+          objectId: opportunityId,
+          objectType: "opportunity"
+        }
+      ];
+    }
+
+    // 4. Post to GoHighLevel
     const ghlRes = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/notes`, {
       method: 'POST',
       headers: {
@@ -58,15 +69,7 @@ export async function POST(req: Request) {
         'Version': '2021-07-28',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        body: aiNote,
-        associations: opportunityId ? [
-          {
-            objectId: opportunityId,
-            objectType: "opportunity"
-          }
-        ] : []
-      }),
+      body: JSON.stringify(ghlPayload),
     });
 
     if (!ghlRes.ok) {
