@@ -1,23 +1,47 @@
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!
+);
 
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
+  let logId = '';
+
   try {
     // 1. Parse the Body ONCE
     const body = await req.json();
     console.log("RAW WEBHOOK DATA:", JSON.stringify(body));
+
     const { contactId, address, opportunityId } = body.customData || {};
+    const contactName = body.full_name || `${body.first_name || ''} ${body.last_name || ''}`.trim();
 
     // Basic Validation
     if (!contactId || !address) {
       return NextResponse.json({ error: "Missing contactId or address" }, { status: 400 });
     }
 
-    // 2. Call Gemini API with live Google Search
+    // 2. Create initial log entry
+    const { data: logEntry } = await supabase
+      .from('logs')
+      .insert({
+        contact_id: contactId,
+        contact_name: contactName,
+        address: address,
+        ghl_status: 'pending',
+        webhook_data: body,
+      })
+      .select()
+      .single();
+
+    logId = logEntry?.id;
+
+    // 3. Call Gemini API with live Google Search
     const prompt = `
       You are a real estate wholesale analyst.
       Search for 3 recently SOLD comps within 1 mile of: ${address}
@@ -50,18 +74,20 @@ export async function POST(req: Request) {
 
     const aiNote = response.text;
 
-    // 3. Build GHL payload — only include associations if opportunityId exists
+    // 4. Update log with AI output
+    if (logId) {
+      await supabase.from('logs').update({ ai_output: aiNote }).eq('id', logId);
+    }
+
+    // 5. Build GHL payload
     const ghlPayload: any = { body: aiNote };
     if (opportunityId && opportunityId !== "") {
       ghlPayload.associations = [
-        {
-          objectId: opportunityId,
-          objectType: "opportunity"
-        }
+        { objectId: opportunityId, objectType: "opportunity" }
       ];
     }
 
-    // 4. Post to GoHighLevel
+    // 6. Post to GoHighLevel
     const ghlRes = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/notes`, {
       method: 'POST',
       headers: {
@@ -72,6 +98,13 @@ export async function POST(req: Request) {
       body: JSON.stringify(ghlPayload),
     });
 
+    const ghlStatus = ghlRes.ok ? 'success' : `failed_${ghlRes.status}`;
+
+    // 7. Update log with GHL status
+    if (logId) {
+      await supabase.from('logs').update({ ghl_status: ghlStatus }).eq('id', logId);
+    }
+
     if (!ghlRes.ok) {
       const errorData = await ghlRes.text();
       console.error("GHL Error Details:", errorData);
@@ -81,6 +114,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("Route Error:", error.message);
+    if (logId) {
+      await supabase.from('logs').update({ ghl_status: `error: ${error.message}` }).eq('id', logId);
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
