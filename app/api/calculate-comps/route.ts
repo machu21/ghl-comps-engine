@@ -127,11 +127,11 @@ export async function POST(req: Request) {
       });
     }
 
-    // 9. Build GHL payload
+    // 9. Build GHL payload — never include associations unless valid opportunityId
     const ghlPayload: any = { body: aiNote };
-    if (opportunityId && opportunityId !== "") {
+    if (opportunityId && typeof opportunityId === 'string' && opportunityId.trim() !== "") {
       ghlPayload.associations = [
-        { objectId: opportunityId, objectType: "opportunity" }
+        { objectId: opportunityId.trim(), objectType: "opportunity" }
       ];
     }
 
