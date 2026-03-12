@@ -127,13 +127,8 @@ export async function POST(req: Request) {
       });
     }
 
-    // 9. Build GHL payload — never include associations unless valid opportunityId
-    const ghlPayload: any = { body: aiNote };
-    if (opportunityId && typeof opportunityId === 'string' && opportunityId.trim() !== "") {
-      ghlPayload.associations = [
-        { objectId: opportunityId.trim(), objectType: "opportunity" }
-      ];
-    }
+    // 9. Build GHL payload — associations field removed (not supported by GHL notes endpoint)
+    const ghlPayload = { body: aiNote };
 
     // 10. Post to GoHighLevel
     const ghlRes = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/notes`, {
