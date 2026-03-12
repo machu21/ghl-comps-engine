@@ -31,19 +31,32 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<'ai_output' | 'webhook'>('ai_output');
   const [search, setSearch] = useState('');
   const [clientFilter, setClientFilter] = useState('all');
-  const [activeNav, setActiveNav] = useState<'logs' | 'clients'>('logs');
+  const [activeNav, setActiveNav] = useState<'logs' | 'clients' | 'settings'>('logs');
 
   const fetchData = useCallback(async () => {
-    const [logsRes, clientsRes] = await Promise.all([
-      fetch('/api/logs'),
-      fetch('/api/clients'),
-    ]);
-    if (logsRes.status === 401) { router.push('/login'); return; }
-    const logsData = await logsRes.json();
-    const clientsData = await clientsRes.json();
-    setLogs(logsData.logs || []);
-    setClients(clientsData.clients || []);
-    setLoading(false);
+    try {
+      const [logsRes, clientsRes] = await Promise.all([
+        fetch('/api/logs'),
+        fetch('/api/clients'),
+      ]);
+
+      if (logsRes.status === 401 || clientsRes.status === 401) {
+        router.push('/login');
+        return;
+      }
+
+      const [logsData, clientsData] = await Promise.all([
+        logsRes.json().catch(() => ({ logs: [] })),
+        clientsRes.json().catch(() => ({ clients: [] })),
+      ]);
+
+      setLogs(Array.isArray(logsData.logs) ? logsData.logs : []);
+      setClients(Array.isArray(clientsData.clients) ? clientsData.clients : []);
+    } catch (err) {
+      console.error('fetchData error:', err);
+    } finally {
+      setLoading(false);
+    }
   }, [router]);
 
   useEffect(() => {
@@ -84,9 +97,10 @@ export default function DashboardPage() {
         ::-webkit-scrollbar-thumb { background: #1e1e2e; border-radius: 3px; }
         @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
         @keyframes flicker { 0%,100%{opacity:1} 92%{opacity:1} 93%{opacity:0.6} 94%{opacity:1} }
-        .log-row:hover { background: #13131a !important; cursor: pointer; }
+        .log-row:hover { background: #1a1a24 !important; cursor: pointer; }
         .nav-btn { width:100%; text-align:left; background:transparent; border:none; border-left:2px solid transparent; padding:10px 20px; font-size:12px; letter-spacing:0.08em; cursor:pointer; transition:color 0.2s; text-transform:uppercase; font-family:'DM Mono',monospace; }
         .nav-btn:hover { color: #e2e2e8 !important; }
+        input:focus, select:focus { border-color: #2e2e4e !important; outline: none; }
       `}</style>
 
       <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -101,7 +115,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <nav style={{ flex: 1, padding: '16px 0' }}>
-            {[{ key: 'logs', label: '⬡ Logs' }, { key: 'clients', label: '⬡ Clients' }].map(item => (
+            {[{ key: 'logs', label: '⬡ Logs' }, { key: 'clients', label: '⬡ Clients' }, { key: 'settings', label: '⬡ Settings' }].map(item => (
               <button key={item.key} className="nav-btn"
                 onClick={() => setActiveNav(item.key as any)}
                 style={{ color: activeNav === item.key ? '#63ffb4' : '#555566', borderLeft: activeNav === item.key ? '2px solid #63ffb4' : '2px solid transparent' }}>
@@ -140,26 +154,29 @@ export default function DashboardPage() {
                 <div style={{ background: '#13131a', border: '1px solid #1e1e2e', borderRadius: 16, overflow: 'hidden' }}>
                   <div style={{ padding: '20px 24px', borderBottom: '1px solid #1e1e2e', display: 'flex', gap: 12, alignItems: 'center' }}>
                     <input placeholder="Search name or address..." value={search} onChange={e => setSearch(e.target.value)}
-                      style={{ background: '#0a0a0f', border: '1px solid #1e1e2e', borderRadius: 8, padding: '8px 12px', color: '#e2e2e8', fontSize: 12, outline: 'none', flex: 1 }} />
+                      style={{ background: '#0a0a0f', border: '1px solid #1e1e2e', borderRadius: 8, padding: '8px 12px', color: '#e2e2e8', fontSize: 12, outline: 'none', flex: 1, fontFamily: "'DM Mono', monospace" }} />
                     <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
-                      style={{ background: '#0a0a0f', border: '1px solid #1e1e2e', borderRadius: 8, padding: '8px 12px', color: '#e2e2e8', fontSize: 12, outline: 'none' }}>
+                      style={{ background: '#0a0a0f', border: '1px solid #1e1e2e', borderRadius: 8, padding: '8px 12px', color: '#e2e2e8', fontSize: 12, outline: 'none', fontFamily: "'DM Mono', monospace" }}>
                       <option value="all">All Clients</option>
                       {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
-                    <button onClick={fetchData} style={{ background: '#1e1e2e', border: 'none', borderRadius: 8, padding: '8px 14px', color: '#888899', fontSize: 11, cursor: 'pointer' }}>↻</button>
+                    <button onClick={fetchData} style={{ background: '#1e1e2e', border: 'none', borderRadius: 8, padding: '8px 14px', color: '#888899', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>↻</button>
                   </div>
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 0.8fr 100px 140px', padding: '10px 24px', borderBottom: '1px solid #1e1e2e' }}>
                     {['Contact', 'Address', 'Client', 'Status', 'Time'].map(h => (
                       <span key={h} style={{ fontSize: 10, color: '#333344', letterSpacing: '0.12em', textTransform: 'uppercase' }}>{h}</span>
                     ))}
                   </div>
+
                   <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
                     {loading ? (
                       <div style={{ padding: 40, textAlign: 'center', color: '#555566', fontSize: 13 }}>Loading...</div>
                     ) : filtered.length === 0 ? (
                       <div style={{ padding: 40, textAlign: 'center', color: '#555566', fontSize: 13 }}>No logs found</div>
                     ) : filtered.map((log, i) => (
-                      <div key={log.id} className="log-row" onClick={() => setSelected(selected?.id === log.id ? null : log)}
+                      <div key={log.id} className="log-row"
+                        onClick={() => setSelected(selected?.id === log.id ? null : log)}
                         style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 0.8fr 100px 140px', padding: '14px 24px', borderBottom: '1px solid #0f0f18', background: selected?.id === log.id ? '#1a1a24' : 'transparent', transition: 'background 0.15s', animation: `fadeUp 0.3s ease ${i * 0.03}s both` }}>
                         <span style={{ color: '#c8c8d8', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{log.contact_name || '—'}</span>
                         <span style={{ color: '#888899', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{log.address || '—'}</span>
@@ -176,6 +193,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
+                {/* Detail panel */}
                 {selected && (
                   <div style={{ background: '#13131a', border: '1px solid #1e1e2e', borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 200px)', position: 'sticky', top: 32 }}>
                     <div style={{ padding: '20px 24px', borderBottom: '1px solid #1e1e2e', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -208,9 +226,110 @@ export default function DashboardPage() {
           {activeNav === 'clients' && (
             <ClientsPanel clients={clients} onRefresh={fetchData} />
           )}
+
+          {activeNav === 'settings' && (
+            <SettingsPanel />
+          )}
         </div>
       </div>
     </main>
+  );
+}
+
+function SettingsPanel() {
+  const [prompt, setPrompt] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    fetch('/api/settings?key=prompt_template')
+      .then(r => r.json())
+      .then(data => {
+        setPrompt(data.setting?.value || '');
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMsg('');
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'prompt_template', value: prompt }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      setMsg('✅ Prompt saved!');
+      setTimeout(() => setMsg(''), 3000);
+    } else {
+      setMsg('❌ Failed to save');
+    }
+  };
+
+  const handleReset = () => {
+    setPrompt(`You are a real estate wholesale analyst.
+Search for 3 recently SOLD comps within 1 mile of: {{address}}
+
+Return ONLY this:
+
+Property Address: {{address}}
+AvgPPS: $X/sqft
+ARV: $X
+Repairs: $10,000 (medium)
+MAO (ARV x 70% - $10,000 repairs): $X
+Offer: $X
+
+Profit 5K: $X | Profit 10K: $X | Profit 15K: $X
+
+Comp 1: [Address] | Sold: $X | $/sqft: $X | [X] miles away
+Comp 2: [Address] | Sold: $X | $/sqft: $X | [X] miles away
+Comp 3: [Address] | Sold: $X | $/sqft: $X | [X] miles away
+
+Analysis: [2 sentences max - good deal or not?]`);
+    setMsg('↺ Reset to default — click Save to apply');
+  };
+
+  return (
+    <div style={{ animation: 'fadeUp 0.4s ease', maxWidth: 800 }}>
+      <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: '#e2e2e8', marginBottom: 8 }}>Prompt Settings</h2>
+      <p style={{ color: '#555566', fontSize: 12, marginBottom: 24 }}>
+        Edit the AI prompt sent to Gemini. Use <span style={{ color: '#a78bfa', background: '#1a1a2e', padding: '2px 6px', borderRadius: 4 }}>{'{{address}}'}</span> as the placeholder for the property address.
+      </p>
+
+      <div style={{ background: '#13131a', border: '1px solid #1e1e2e', borderRadius: 16, padding: 28 }}>
+        {loading ? (
+          <div style={{ color: '#555566', fontSize: 13 }}>Loading prompt...</div>
+        ) : (
+          <>
+            <textarea
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              rows={20}
+              style={{
+                width: '100%', background: '#0a0a0f', border: '1px solid #1e1e2e',
+                borderRadius: 8, padding: '14px', color: '#c8c8d8', fontSize: 13,
+                lineHeight: 1.8, outline: 'none', resize: 'vertical',
+                fontFamily: "'DM Mono', monospace",
+              }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
+              <button onClick={handleSave} disabled={saving}
+                style={{ background: '#63ffb4', color: '#0a0a0f', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 12, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: "'DM Mono', monospace", opacity: saving ? 0.7 : 1 }}>
+                {saving ? 'Saving...' : '✓ Save Prompt'}
+              </button>
+              <button onClick={handleReset}
+                style={{ background: 'transparent', border: '1px solid #1e1e2e', borderRadius: 8, padding: '10px 16px', color: '#555566', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>
+                ↺ Reset to Default
+              </button>
+              {msg && <span style={{ fontSize: 12, color: msg.startsWith('✅') ? '#63ffb4' : msg.startsWith('↺') ? '#ffcc63' : '#ff6b6b' }}>{msg}</span>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -218,11 +337,8 @@ function ClientsPanel({ clients, onRefresh }: { clients: Client[], onRefresh: ()
   const [name, setName] = useState('');
   const [token, setToken] = useState('');
   const [locationId, setLocationId] = useState('');
-  const [locationName, setLocationName] = useState('');
   const [saving, setSaving] = useState(false);
-  const [looking, setLooking] = useState(false);
   const [msg, setMsg] = useState('');
-
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -237,7 +353,7 @@ function ClientsPanel({ clients, onRefresh }: { clients: Client[], onRefresh: ()
     setSaving(false);
     if (res.ok) {
       setMsg('✅ Client added!');
-      setName(''); setToken(''); setLocationId(''); setLocationName('');
+      setName(''); setToken(''); setLocationId('');
       onRefresh();
     } else {
       setMsg(`❌ ${data.error}`);
@@ -250,8 +366,15 @@ function ClientsPanel({ clients, onRefresh }: { clients: Client[], onRefresh: ()
     onRefresh();
   };
 
-  const inputStyle: React.CSSProperties = { width: '100%', background: '#0a0a0f', border: '1px solid #1e1e2e', borderRadius: 8, padding: '10px 12px', color: '#e2e2e8', fontSize: 13, outline: 'none', fontFamily: "'DM Mono', monospace" };
-  const labelStyle: React.CSSProperties = { display: 'block', fontSize: 10, color: '#555566', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 };
+  const inputStyle: React.CSSProperties = {
+    width: '100%', background: '#0a0a0f', border: '1px solid #1e1e2e',
+    borderRadius: 8, padding: '10px 12px', color: '#e2e2e8', fontSize: 13,
+    outline: 'none', fontFamily: "'DM Mono', monospace"
+  };
+  const labelStyle: React.CSSProperties = {
+    display: 'block', fontSize: 10, color: '#555566',
+    letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6
+  };
 
   return (
     <div style={{ animation: 'fadeUp 0.4s ease', maxWidth: 800 }}>
@@ -262,36 +385,37 @@ function ClientsPanel({ clients, onRefresh }: { clients: Client[], onRefresh: ()
         <h3 style={{ fontSize: 13, color: '#888899', marginBottom: 20, letterSpacing: '0.05em' }}>Add New Client</h3>
         <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* Step 1 - Token  */}
           <div>
-            <label style={labelStyle}>Step 1 — GHL Access Token</label>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <input style={{ ...inputStyle, flex: 1 }} value={token} onChange={e => { setToken(e.target.value); setLocationId(''); setLocationName(''); }} placeholder="pit-xxx-..." required />
-            </div>
+            <label style={labelStyle}>Client Name</label>
+            <input style={inputStyle} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. John Doe" required />
+          </div>
+
+          <div>
+            <label style={labelStyle}>GHL Access Token</label>
+            <input style={inputStyle} value={token} onChange={e => setToken(e.target.value)} placeholder="pit-xxx-..." required />
             <p style={{ fontSize: 11, color: '#444455', marginTop: 6 }}>
               Find in GHL → Settings → Integrations → API Key
             </p>
           </div>
 
-          {/* Step 2 - Location ID ( or manual) */}
           <div>
-            <label style={labelStyle}>Step 2 — Location ID {locationName && <span style={{ color: '#63ffb4', marginLeft: 8 }}>✓ {locationName}</span>}</label>
-            <input style={{ ...inputStyle, borderColor: locationId ? '#2e3e2e' : '#1e1e2e' }} value={locationId} onChange={e => setLocationId(e.target.value)}
-              placeholder="Paste manually" required />
-            <p style={{ fontSize: 11, color: '#444455', marginTop: 6 }}>
-              Or find manually: GHL URL → /location/<span style={{ color: '#a78bfa' }}>THIS_PART</span>/dashboard
-            </p>
-          </div>
-
-          {/* Step 3 - Name */}
-          <div>
-            <label style={labelStyle}>Step 3 — Client Name</label>
-            <input style={inputStyle} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. John Doe" required />
+            <label style={labelStyle}>Location ID</label>
+            <input style={inputStyle} value={locationId} onChange={e => setLocationId(e.target.value)} placeholder="e.g. Re6WOWlAYmaoBTb3jmE1" required />
+            <div style={{ marginTop: 8, background: '#0d0d14', border: '1px solid #1e1e2e', borderRadius: 8, padding: '10px 14px' }}>
+              <p style={{ fontSize: 11, color: '#555566', margin: 0, lineHeight: 1.8 }}>
+                How to find your Location ID:<br />
+                1. Log into your GHL sub-account<br />
+                2. Look at the browser URL:<br />
+                <span style={{ color: '#888899' }}>app.gohighlevel.com/location/</span>
+                <span style={{ color: '#63ffb4' }}>THIS_IS_YOUR_ID</span>
+                <span style={{ color: '#888899' }}>/dashboard</span>
+              </p>
+            </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <button type="submit" disabled={saving || !locationId}
-              style={{ background: locationId ? '#63ffb4' : '#1e1e2e', color: locationId ? '#0a0a0f' : '#555566', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 12, fontWeight: 500, cursor: saving || !locationId ? 'not-allowed' : 'pointer', fontFamily: "'DM Mono', monospace" }}>
+            <button type="submit" disabled={saving}
+              style={{ background: '#63ffb4', color: '#0a0a0f', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 12, fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1, fontFamily: "'DM Mono', monospace" }}>
               {saving ? 'Adding...' : '+ Add Client'}
             </button>
             {msg && <span style={{ fontSize: 12, color: msg.startsWith('✅') ? '#63ffb4' : '#ff6b6b' }}>{msg}</span>}
@@ -310,10 +434,14 @@ function ClientsPanel({ clients, onRefresh }: { clients: Client[], onRefresh: ()
           <div key={client.id} style={{ padding: '16px 24px', borderBottom: '1px solid #0f0f18', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ color: '#c8c8d8', fontSize: 14, marginBottom: 4 }}>{client.name}</div>
-              <div style={{ color: '#444455', fontSize: 11 }}>Location ID: <span style={{ color: '#a78bfa' }}>{client.location_id}</span></div>
+              <div style={{ color: '#444455', fontSize: 11 }}>
+                Location ID: <span style={{ color: '#a78bfa' }}>{client.location_id}</span>
+              </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 11, color: '#333344', fontFamily: 'monospace' }}>{client.ghl_access_token?.substring(0, 16)}...</span>
+              <span style={{ fontSize: 11, color: '#333344', fontFamily: 'monospace' }}>
+                {client.ghl_access_token?.substring(0, 16)}...
+              </span>
               <button onClick={() => handleDelete(client.id)}
                 style={{ background: 'transparent', border: '1px solid #2e1e1e', borderRadius: 6, padding: '4px 10px', color: '#ff6b6b', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>
                 Delete

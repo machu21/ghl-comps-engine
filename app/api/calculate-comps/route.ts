@@ -10,6 +10,27 @@ const supabase = createClient(
 
 export const maxDuration = 60;
 
+// Default prompt fallback if none in DB
+const DEFAULT_PROMPT = `You are a real estate wholesale analyst.
+Search for 3 recently SOLD comps within 1 mile of: {{address}}
+
+Return ONLY this:
+
+Property Address: {{address}}
+AvgPPS: $X/sqft
+ARV: $X
+Repairs: $10,000 (medium)
+MAO (ARV x 70% - $10,000 repairs): $X
+Offer: $X
+
+Profit 5K: $X | Profit 10K: $X | Profit 15K: $X
+
+Comp 1: [Address] | Sold: $X | $/sqft: $X | [X] miles away
+Comp 2: [Address] | Sold: $X | $/sqft: $X | [X] miles away
+Comp 3: [Address] | Sold: $X | $/sqft: $X | [X] miles away
+
+Analysis: [2 sentences max - good deal or not?]`;
+
 export async function POST(req: Request) {
   let logId = '';
 
@@ -41,29 +62,27 @@ export async function POST(req: Request) {
 
     // 3. Auto-register client if not found
     if (clientError || !client) {
-      console.log(`Client not found for location_id: ${locationId}. Auto-registering...`);
-
-      const { data: newClient, error: insertError } = await supabase
+      console.log(`Auto-registering new client: ${locationName}`);
+      const { data: newClient } = await supabase
         .from('clients')
-        .insert({
-          name: locationName,
-          location_id: locationId,
-          ghl_access_token: '', // empty until manually set in dashboard
-        })
+        .insert({ name: locationName, location_id: locationId, ghl_access_token: '' })
         .select()
         .single();
-
-      if (insertError) {
-        console.error("Failed to auto-register client:", insertError);
-      } else {
-        client = newClient;
-        console.log(`Auto-registered new client: ${locationName} (${locationId})`);
-      }
+      client = newClient;
     }
 
-    console.log("Client:", client?.name || 'unknown');
+    // 4. Fetch prompt template from settings
+    const { data: promptSetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'prompt_template')
+      .single();
 
-    // 4. Create initial log entry
+    const promptTemplate = promptSetting?.value || DEFAULT_PROMPT;
+    const prompt = promptTemplate.replace(/{{address}}/g, address);
+    console.log("Using prompt template from:", promptSetting ? 'Supabase' : 'default');
+
+    // 5. Create initial log entry
     const { data: logEntry } = await supabase
       .from('logs')
       .insert({
@@ -80,29 +99,7 @@ export async function POST(req: Request) {
 
     logId = logEntry?.id;
 
-    // 5. Call Gemini API with live Google Search
-    const prompt = `
-      You are a real estate wholesale analyst.
-      Search for 3 recently SOLD comps within 1 mile of: ${address}
-
-      Return ONLY this:
-
-      Property Address: ${address}
-      AvgPPS: $X/sqft
-      ARV: $X
-      Repairs: $10,000 (medium)
-      MAO (ARV x 70% - $10,000 repairs): $X
-      Offer: $X
-
-      Profit 5K: $X | Profit 10K: $X | Profit 15K: $X
-
-      Comp 1: [Address] | Sold: $X | $/sqft: $X | [X] miles away
-      Comp 2: [Address] | Sold: $X | $/sqft: $X | [X] miles away
-      Comp 3: [Address] | Sold: $X | $/sqft: $X | [X] miles away
-
-      Analysis: [2 sentences max - good deal or not?]
-    `;
-
+    // 6. Call Gemini API with live Google Search
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
@@ -113,18 +110,16 @@ export async function POST(req: Request) {
 
     const aiNote = response.text;
 
-    // 6. Update log with AI output
+    // 7. Update log with AI output
     if (logId) {
       await supabase.from('logs').update({ ai_output: aiNote }).eq('id', logId);
     }
 
-    // 7. Check if client has a GHL token before posting
+    // 8. Check if client has a GHL token
     if (!client?.ghl_access_token) {
       console.warn(`Client ${client?.name} has no GHL token. Skipping GHL note post.`);
       if (logId) {
-        await supabase.from('logs').update({
-          ghl_status: 'missing_ghl_token'
-        }).eq('id', logId);
+        await supabase.from('logs').update({ ghl_status: 'missing_ghl_token' }).eq('id', logId);
       }
       return NextResponse.json({
         success: true,
@@ -132,7 +127,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // 8. Build GHL payload using client's token
+    // 9. Build GHL payload
     const ghlPayload: any = { body: aiNote };
     if (opportunityId && opportunityId !== "") {
       ghlPayload.associations = [
@@ -140,7 +135,7 @@ export async function POST(req: Request) {
       ];
     }
 
-    // 9. Post to GoHighLevel using client's GHL token
+    // 10. Post to GoHighLevel
     const ghlRes = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/notes`, {
       method: 'POST',
       headers: {
@@ -153,7 +148,6 @@ export async function POST(req: Request) {
 
     const ghlStatus = ghlRes.ok ? 'success' : `failed_${ghlRes.status}`;
 
-    // 10. Update log with GHL status
     if (logId) {
       await supabase.from('logs').update({ ghl_status: ghlStatus }).eq('id', logId);
     }
