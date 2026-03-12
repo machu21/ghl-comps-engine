@@ -296,7 +296,7 @@ Analysis: [2 sentences max - good deal or not?]`);
     <div style={{ animation: 'fadeUp 0.4s ease', maxWidth: 800 }}>
       <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: '#e2e2e8', marginBottom: 8 }}>Prompt Settings</h2>
       <p style={{ color: '#555566', fontSize: 12, marginBottom: 24 }}>
-        Edit the AI prompt sent to Gemini. Use <span style={{ color: '#a78bfa', background: '#1a1a2e', padding: '2px 6px', borderRadius: 4 }}>{'{{address}}'}</span> as the placeholder for the property address.
+        IMPORTANT NOTE: Use <span style={{ color: '#a78bfa', background: '#1a1a2e', padding: '2px 6px', borderRadius: 4 }}>{'{{address}}'}</span> as the placeholder for the property address.
       </p>
 
       <div style={{ background: '#13131a', border: '1px solid #1e1e2e', borderRadius: 16, padding: 28 }}>
