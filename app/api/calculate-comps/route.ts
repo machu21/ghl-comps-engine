@@ -20,13 +20,50 @@ export async function POST(req: Request) {
 
     const { contactId, address, opportunityId } = body.customData || {};
     const contactName = body.full_name || `${body.first_name || ''} ${body.last_name || ''}`.trim();
+    const locationId = body.location?.id;
+    const locationName = body.location?.name || 'Unknown Client';
 
     // Basic Validation
     if (!contactId || !address) {
       return NextResponse.json({ error: "Missing contactId or address" }, { status: 400 });
     }
 
-    // 2. Create initial log entry
+    if (!locationId) {
+      return NextResponse.json({ error: "Missing location.id in webhook" }, { status: 400 });
+    }
+
+    // 2. Lookup client by location_id
+    let { data: client, error: clientError } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('location_id', locationId)
+      .single();
+
+    // 3. Auto-register client if not found
+    if (clientError || !client) {
+      console.log(`Client not found for location_id: ${locationId}. Auto-registering...`);
+
+      const { data: newClient, error: insertError } = await supabase
+        .from('clients')
+        .insert({
+          name: locationName,
+          location_id: locationId,
+          ghl_access_token: '', // empty until manually set in dashboard
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("Failed to auto-register client:", insertError);
+      } else {
+        client = newClient;
+        console.log(`Auto-registered new client: ${locationName} (${locationId})`);
+      }
+    }
+
+    console.log("Client:", client?.name || 'unknown');
+
+    // 4. Create initial log entry
     const { data: logEntry } = await supabase
       .from('logs')
       .insert({
@@ -35,13 +72,15 @@ export async function POST(req: Request) {
         address: address,
         ghl_status: 'pending',
         webhook_data: body,
+        client_id: client?.id || null,
+        location_id: locationId,
       })
       .select()
       .single();
 
     logId = logEntry?.id;
 
-    // 3. Call Gemini API with live Google Search
+    // 5. Call Gemini API with live Google Search
     const prompt = `
       You are a real estate wholesale analyst.
       Search for 3 recently SOLD comps within 1 mile of: ${address}
@@ -74,12 +113,26 @@ export async function POST(req: Request) {
 
     const aiNote = response.text;
 
-    // 4. Update log with AI output
+    // 6. Update log with AI output
     if (logId) {
       await supabase.from('logs').update({ ai_output: aiNote }).eq('id', logId);
     }
 
-    // 5. Build GHL payload
+    // 7. Check if client has a GHL token before posting
+    if (!client?.ghl_access_token) {
+      console.warn(`Client ${client?.name} has no GHL token. Skipping GHL note post.`);
+      if (logId) {
+        await supabase.from('logs').update({
+          ghl_status: 'missing_ghl_token'
+        }).eq('id', logId);
+      }
+      return NextResponse.json({
+        success: true,
+        warning: `Client auto-registered but has no GHL token yet. Add it in the dashboard.`
+      });
+    }
+
+    // 8. Build GHL payload using client's token
     const ghlPayload: any = { body: aiNote };
     if (opportunityId && opportunityId !== "") {
       ghlPayload.associations = [
@@ -87,11 +140,11 @@ export async function POST(req: Request) {
       ];
     }
 
-    // 6. Post to GoHighLevel
+    // 9. Post to GoHighLevel using client's GHL token
     const ghlRes = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/notes`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.GHL_ACCESS_TOKEN}`,
+        'Authorization': `Bearer ${client.ghl_access_token}`,
         'Version': '2021-07-28',
         'Content-Type': 'application/json',
       },
@@ -100,7 +153,7 @@ export async function POST(req: Request) {
 
     const ghlStatus = ghlRes.ok ? 'success' : `failed_${ghlRes.status}`;
 
-    // 7. Update log with GHL status
+    // 10. Update log with GHL status
     if (logId) {
       await supabase.from('logs').update({ ghl_status: ghlStatus }).eq('id', logId);
     }
